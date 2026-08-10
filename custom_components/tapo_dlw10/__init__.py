@@ -7,7 +7,13 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platfor
 from homeassistant.core import HomeAssistant
 
 from .api import DLW10Client
-from .const import CONF_LOCK_NAME, CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL, PLATFORMS
+from .const import (
+    CONF_LOCK_NAME,
+    CONF_POLL_INTERVAL,
+    DEFAULT_POLL_INTERVAL,
+    DOMAIN,
+    PLATFORMS,
+)
 from .coordinator import DLW10Coordinator
 
 
@@ -29,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception:
         await client.async_close()
         raise
-    entry.runtime_data = coordinator
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(
         entry, [Platform(platform) for platform in PLATFORMS]
     )
@@ -37,10 +43,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    coordinator: DLW10Coordinator = entry.runtime_data
+    coordinator: DLW10Coordinator = hass.data[DOMAIN][entry.entry_id]
     unloaded = await hass.config_entries.async_unload_platforms(
         entry, [Platform(platform) for platform in PLATFORMS]
     )
     if unloaded:
         await coordinator.client.async_close()
+        hass.data[DOMAIN].pop(entry.entry_id)
     return unloaded

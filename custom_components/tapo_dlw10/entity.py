@@ -9,7 +9,7 @@ from .const import DOMAIN
 from .coordinator import DLW10Coordinator
 
 
-class DLW10Entity(CoordinatorEntity[DLW10Coordinator]):
+class DLW10Entity(CoordinatorEntity):
     """Base class for DLW10 entities."""
 
     _attr_has_entity_name = True

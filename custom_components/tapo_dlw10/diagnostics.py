@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .const import DOMAIN
 from .coordinator import DLW10Coordinator
 
 
@@ -14,7 +15,7 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return only allowlisted, non-identifying state."""
-    coordinator: DLW10Coordinator = entry.runtime_data
+    coordinator: DLW10Coordinator = hass.data[DOMAIN][entry.entry_id]
     info = coordinator.data
     return {
         "integration_version": 1,

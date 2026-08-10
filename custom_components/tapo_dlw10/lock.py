@@ -8,10 +8,9 @@ from homeassistant.components.lock import LockEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api import DlklapError
-from .const import JAMMED_STATES, LOCKED, UNLOCKED
+from .const import DOMAIN, JAMMED_STATES, LOCKED, UNLOCKED
 from .coordinator import DLW10Coordinator
 from .entity import DLW10Entity
 
@@ -19,9 +18,9 @@ from .entity import DLW10Entity
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    async_add_entities: AddConfigEntryEntitiesCallback,
+    async_add_entities,
 ) -> None:
-    coordinator: DLW10Coordinator = entry.runtime_data
+    coordinator: DLW10Coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([DLW10Lock(coordinator)])
 
 

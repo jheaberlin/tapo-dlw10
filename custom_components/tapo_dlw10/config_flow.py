@@ -7,12 +7,6 @@ from typing import Any
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
-from homeassistant.data_entry_flow import ConfigFlowResult
-from homeassistant.helpers.selector import (
-    TextSelector,
-    TextSelectorConfig,
-    TextSelectorType,
-)
 
 from .api import (
     DlklapAuthenticationError,
@@ -38,7 +32,7 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> dict[str, Any]:
         errors: dict[str, str] = {}
         if user_input is not None:
             client: DLW10Client | None = None
@@ -74,19 +68,12 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_HOST): TextSelector(),
-                vol.Required(CONF_LOCK_NAME): TextSelector(),
-                vol.Required(CONF_USERNAME): TextSelector(
-                    TextSelectorConfig(
-                        type=TextSelectorType.EMAIL, autocomplete="username"
-                    )
-                ),
-                vol.Required(CONF_PASSWORD): TextSelector(
-                    TextSelectorConfig(
-                        type=TextSelectorType.PASSWORD,
-                        autocomplete="current-password",
-                    )
-                ),
+                vol.Required(CONF_HOST): str,
+                vol.Required(CONF_LOCK_NAME): str,
+                # The standard username/password keys make the HA frontend use
+                # browser autofill and a masked current-password input.
+                vol.Required(CONF_USERNAME): str,
+                vol.Required(CONF_PASSWORD): str,
                 vol.Optional(
                     CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL
                 ): vol.All(vol.Coerce(int), vol.Range(min=MIN_POLL_INTERVAL, max=3600)),

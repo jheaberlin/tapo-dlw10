@@ -7,8 +7,8 @@ DOMAIN = "tapo_dlw10"
 CONF_LOCK_NAME = "lock_name"
 CONF_POLL_INTERVAL = "poll_interval"
 
-DEFAULT_POLL_INTERVAL = 60
-MIN_POLL_INTERVAL = 30
+DEFAULT_POLL_INTERVAL = 5
+MIN_POLL_INTERVAL = 5
 
 PLATFORMS = ["lock", "sensor", "binary_sensor"]
 

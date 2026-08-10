@@ -20,7 +20,7 @@ from .api import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class DLW10Coordinator(DataUpdateCoordinator[DLW10Info]):
+class DLW10Coordinator(DataUpdateCoordinator):
     """Poll a single lock through one persistent DLKLAP client."""
 
     def __init__(
@@ -34,7 +34,6 @@ class DLW10Coordinator(DataUpdateCoordinator[DLW10Info]):
         super().__init__(
             hass,
             _LOGGER,
-            config_entry=entry,
             name=f"Tapo DLW10 {client.host}",
             update_interval=timedelta(seconds=poll_interval),
             always_update=False,

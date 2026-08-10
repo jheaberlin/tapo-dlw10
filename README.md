@@ -42,9 +42,11 @@ add its URL in HACS under **Custom repositories**, category **Integration**.
 - Battery percentage
 - Low-battery binary sensor
 
-The default polling interval is 60 seconds. Increase it if the lock's battery
-drain changes noticeably. A DHCP reservation for the lock is strongly
-recommended.
+The default polling interval is 5 seconds, matching Home Assistant's built-in
+TP-Link integration. Increase it if the lock's battery drain changes
+noticeably. Commands do their own short postcondition polling, so increasing
+this interval does not delay state confirmation after a Home Assistant
+lock/unlock action. A DHCP reservation for the lock is strongly recommended.
 
 This first prototype uses the US `use1` TP-Link control-key endpoint that was
 validated with the test device. Other account regions are not yet supported.
