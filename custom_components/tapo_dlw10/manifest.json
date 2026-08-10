@@ -1,0 +1,11 @@
+{
+  "domain": "tapo_dlw10",
+  "name": "Tapo DLW10 (Experimental)",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/python-kasa/python-kasa/issues/1693",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/python-kasa/python-kasa/issues/1693",
+  "version": "0.1.0"
+}

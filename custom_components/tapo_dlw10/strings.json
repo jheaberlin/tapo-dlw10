@@ -1,0 +1,28 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This lock is already configured."
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the lock or Tapo cloud.",
+      "invalid_host": "Enter the lock's private IPv4 address.",
+      "invalid_auth": "The Tapo cloud credentials were rejected.",
+      "lock_not_found": "The exact Tapo app lock name did not select one cloud lock.",
+      "unknown": "Unexpected error while testing the read-only connection.",
+      "wrong_device": "The configured IP belongs to a different or unsupported Tapo device."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "host": "Local IP address",
+          "lock_name": "Exact lock name in the Tapo app",
+          "password": "Tapo account password",
+          "poll_interval": "Polling interval (seconds)",
+          "username": "Tapo account email"
+        },
+        "description": "Setup only authenticates and reads status; it never moves the lock. Use a DHCP reservation so the IP remains stable.",
+        "title": "Connect a Tapo DLW10"
+      }
+    }
+  }
+}

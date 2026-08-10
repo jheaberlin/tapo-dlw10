@@ -1,0 +1,11 @@
+Tapo DLW10 experimental Home Assistant integration
+
+The DLKLAP transport and encryption logic in this project is adapted from
+python-kasa pull request #1729, authored by Ted Holtz:
+https://github.com/python-kasa/python-kasa/pull/1729
+
+python-kasa is GPL-3.0-or-later software and carries this copyright notice:
+pyHS100 Copyright (C) 2016 GadgetReactor
+
+Additional DLW10 validation and integration work Copyright (C) 2026
+Jonathan Heaberlin.

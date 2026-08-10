@@ -1,0 +1,21 @@
+"""Constants for the experimental Tapo DLW10 integration."""
+
+from __future__ import annotations
+
+DOMAIN = "tapo_dlw10"
+
+CONF_LOCK_NAME = "lock_name"
+CONF_POLL_INTERVAL = "poll_interval"
+
+DEFAULT_POLL_INTERVAL = 60
+MIN_POLL_INTERVAL = 30
+
+PLATFORMS = ["lock", "sensor", "binary_sensor"]
+
+LOCKED = 0
+UNLOCKED = 1
+UNINITIALIZED = 2
+JAMMED_WHILE_UNLOCKING = 3
+JAMMED_WHILE_LOCKING = 4
+JAMMED_STATES = {JAMMED_WHILE_UNLOCKING, JAMMED_WHILE_LOCKING}
+NORMAL_STATES = {LOCKED, UNLOCKED}
