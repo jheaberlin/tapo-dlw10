@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem with Tapo Smart Lock
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve the integration. Never include Tapo credentials, tokens, keys, cookies, device IDs, MAC addresses, Wi-Fi names, local addresses, or unreviewed packet captures.
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: home_assistant_version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.8.0
+    validations:
+      required: true
+  - type: input
+    id: lock
+    attributes:
+      label: Lock model and firmware
+      placeholder: DLW10, firmware 1.0.15
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include what you expected and what actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics or logs
+      description: Prefer Home Assistant's downloadable integration diagnostics. Review everything before posting.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I verified the lock is physically secure and will not repeatedly test an ambiguous physical command.
+          required: true
+        - label: I reviewed this report and its attachments for credentials, tokens, keys, identifiers, and private network details.
+          required: true
+        - label: I searched existing issues for this problem.
+          required: true

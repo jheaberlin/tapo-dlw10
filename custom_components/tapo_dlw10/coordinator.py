@@ -1,4 +1,4 @@
-"""Update coordinator for the experimental Tapo DLW10 integration."""
+"""Update coordinator for Tapo Smart Lock."""
 
 from __future__ import annotations
 
@@ -31,10 +31,12 @@ class DLW10Coordinator(DataUpdateCoordinator):
         poll_interval: int,
     ) -> None:
         self.client = client
+        self.device_name = entry.title
+        self.poll_interval = poll_interval
         super().__init__(
             hass,
             _LOGGER,
-            name=f"Tapo DLW10 {client.host}",
+            name="Tapo Smart Lock status",
             update_interval=timedelta(seconds=poll_interval),
             always_update=False,
         )

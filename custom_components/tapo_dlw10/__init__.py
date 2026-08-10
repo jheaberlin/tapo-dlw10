@@ -1,4 +1,4 @@
-"""Experimental direct local support for Tapo DLW10 locks."""
+"""Direct Home Assistant support for Tapo DLW10 smart locks."""
 
 from __future__ import annotations
 

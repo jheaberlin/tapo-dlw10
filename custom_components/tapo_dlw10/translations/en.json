@@ -1,27 +1,79 @@
 {
+  "title": "Tapo Smart Lock",
   "config": {
     "abort": {
-      "already_configured": "This lock is already configured."
+      "already_configured": "This lock is already configured.",
+      "reauth_successful": "Tapo account credentials updated successfully.",
+      "reconfigure_successful": "Lock configuration updated successfully."
     },
     "error": {
       "cannot_connect": "Could not connect to the lock or Tapo cloud.",
-      "invalid_host": "Enter the lock's private IPv4 address.",
       "invalid_auth": "The Tapo cloud credentials were rejected.",
-      "lock_not_found": "The exact Tapo app lock name did not select one cloud lock.",
+      "invalid_host": "Enter the lock's private IPv4 address.",
+      "lock_not_found": "The Tapo app name did not select exactly one lock in this account.",
       "unknown": "Unexpected error while testing the read-only connection.",
+      "wrong_account": "Those credentials do not provide access to the configured lock.",
       "wrong_device": "The configured IP belongs to a different or unsupported Tapo device."
     },
     "step": {
+      "reauth_confirm": {
+        "data": {
+          "password": "Tapo account password",
+          "username": "Tapo account email"
+        },
+        "data_description": {
+          "password": "Password for the Tapo account that owns this lock.",
+          "username": "Email address used to sign in to the Tapo app."
+        },
+        "description": "Enter updated credentials for {name}. This test reads status only and never moves the lock.",
+        "title": "Reconnect Tapo account"
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Local IP address",
+          "lock_name": "Lock name in the Tapo app",
+          "poll_interval": "Polling interval"
+        },
+        "data_description": {
+          "host": "Private IPv4 address reserved for this lock on your LAN.",
+          "lock_name": "Exact name shown for this lock in the Tapo app.",
+          "poll_interval": "Seconds between checks for manual lock changes (5–3600)."
+        },
+        "description": "Update the local connection for {name}. Validation is read-only and never moves the lock.",
+        "title": "Reconfigure Tapo Smart Lock"
+      },
       "user": {
         "data": {
           "host": "Local IP address",
-          "lock_name": "Exact lock name in the Tapo app",
+          "lock_name": "Lock name in the Tapo app",
           "password": "Tapo account password",
-          "poll_interval": "Polling interval (seconds)",
+          "poll_interval": "Polling interval",
           "username": "Tapo account email"
         },
-        "description": "Setup only authenticates and reads status; it never moves the lock. Use a DHCP reservation so the IP remains stable.",
-        "title": "Connect a Tapo DLW10"
+        "data_description": {
+          "host": "Private IPv4 address reserved for this lock on your LAN.",
+          "lock_name": "Exact name shown for this lock in the Tapo app.",
+          "password": "Password for the Tapo account that owns this lock.",
+          "poll_interval": "Seconds between checks for manual lock changes (5–3600).",
+          "username": "Email address used to sign in to the Tapo app."
+        },
+        "description": "Connect Home Assistant directly to a Tapo DLW10. Setup authenticates and reads status only; it never moves the lock.",
+        "title": "Add Tapo Smart Lock"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "low_battery": {
+        "name": "Low battery"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "signal_strength": {
+        "name": "Signal strength"
       }
     }
   }

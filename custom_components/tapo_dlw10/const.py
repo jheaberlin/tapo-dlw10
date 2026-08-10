@@ -1,4 +1,4 @@
-"""Constants for the experimental Tapo DLW10 integration."""
+"""Constants for Tapo Smart Lock."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ CONF_POLL_INTERVAL = "poll_interval"
 
 DEFAULT_POLL_INTERVAL = 5
 MIN_POLL_INTERVAL = 5
+MAX_POLL_INTERVAL = 3600
 
 PLATFORMS = ["lock", "sensor", "binary_sensor"]
 

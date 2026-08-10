@@ -127,6 +127,7 @@ class DLW10Info:
     battery_percentage: int | None
     low_battery: bool | None
     signal_level: int | None
+    rssi: int | None = None
 
 
 class DLW10Client:
@@ -610,6 +611,7 @@ class DLW10Client:
             raise DlklapError("The lock identity is missing")
         battery = raw.get("battery_percentage")
         signal = raw.get("signal_level")
+        rssi = raw.get("rssi")
         return DLW10Info(
             identity=self._identity,
             model=model,
@@ -623,6 +625,7 @@ class DLW10Client:
                 else None
             ),
             signal_level=signal if isinstance(signal, int) else None,
+            rssi=rssi if isinstance(rssi, int) and not isinstance(rssi, bool) else None,
         )
 
     def _validate_local_device(self, raw: dict[str, Any]) -> None:

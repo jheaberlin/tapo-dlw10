@@ -1,4 +1,4 @@
-"""Shared entity base for the experimental Tapo DLW10 integration."""
+"""Shared entity base for Tapo Smart Lock."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ class DLW10Entity(CoordinatorEntity):
         self._attr_unique_id = f"{info.identity}_{suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, info.identity)},
-            name="Tapo DLW10",
+            name=coordinator.device_name,
             manufacturer="TP-Link",
-            model=info.model,
+            model=f"Tapo {info.model}",
             sw_version=info.firmware_version,
             hw_version=info.hardware_version,
         )

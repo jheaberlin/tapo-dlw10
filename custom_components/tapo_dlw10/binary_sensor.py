@@ -1,4 +1,4 @@
-"""Low-battery sensor for the experimental Tapo DLW10 integration."""
+"""Binary sensors for Tapo Smart Lock."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
@@ -26,8 +27,9 @@ async def async_setup_entry(
 class DLW10LowBatterySensor(DLW10Entity, BinarySensorEntity):
     """DLW10 low-battery flag."""
 
-    _attr_name = "Low battery"
+    _attr_translation_key = "low_battery"
     _attr_device_class = BinarySensorDeviceClass.BATTERY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: DLW10Coordinator) -> None:
         super().__init__(coordinator, "low_battery")

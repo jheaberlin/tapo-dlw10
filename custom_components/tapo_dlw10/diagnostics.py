@@ -1,4 +1,4 @@
-"""Sanitized diagnostics for the experimental Tapo DLW10 integration."""
+"""Sanitized diagnostics for Tapo Smart Lock."""
 
 from __future__ import annotations
 
@@ -18,8 +18,9 @@ async def async_get_config_entry_diagnostics(
     coordinator: DLW10Coordinator = hass.data[DOMAIN][entry.entry_id]
     info = coordinator.data
     return {
-        "integration_version": 1,
+        "integration_version": "0.2.0",
         "protocol": "DLKLAP",
+        "poll_interval_seconds": coordinator.poll_interval,
         "model": info.model,
         "firmware_version": info.firmware_version,
         "hardware_version": info.hardware_version,
@@ -27,4 +28,5 @@ async def async_get_config_entry_diagnostics(
         "battery_percentage": info.battery_percentage,
         "low_battery": info.low_battery,
         "signal_level": info.signal_level,
+        "rssi": info.rssi,
     }

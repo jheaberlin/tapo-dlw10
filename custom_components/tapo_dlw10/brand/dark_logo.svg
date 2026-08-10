@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 256">
+  <g transform="translate(16 8) scale(.47)">
+    <rect width="512" height="512" rx="112" fill="#0b2634"/>
+    <path d="M154 421V108c0-18 14-32 32-32h180c18 0 32 14 32 32v313M111 421h290" fill="none" stroke="#43d7ff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="272" cy="267" r="62" fill="#f8fcff"/>
+    <path d="M249 267v-17c0-14 10-25 23-25s23 11 23 25v17" fill="none" stroke="#0b2634" stroke-width="16" stroke-linecap="round"/>
+    <rect x="235" y="261" width="74" height="61" rx="16" fill="#0b2634"/>
+    <circle cx="272" cy="285" r="8" fill="#43d7ff"/>
+    <path d="M320 139c27 8 48 29 56 56M321 176c10 4 18 12 22 22" fill="none" stroke="#f8fcff" stroke-width="13" stroke-linecap="round"/>
+  </g>
+  <text x="286" y="120" fill="#f8fcff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="70" font-weight="700">Tapo Smart Lock</text>
+  <text x="290" y="181" fill="#43d7ff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="38" font-weight="600" letter-spacing="6">DLW10 · HOME ASSISTANT</text>
+</svg>

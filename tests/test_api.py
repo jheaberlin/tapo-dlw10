@@ -80,11 +80,13 @@ def test_info_is_allowlisted() -> None:
             "battery_percentage": 81,
             "at_low_battery": False,
             "signal_level": 3,
+            "rssi": -40,
             "device_id": "must-not-escape",
             "ssid": "must-not-escape",
         }
     )
     assert info.identity == "abc123"
+    assert info.rssi == -40
     assert "device_id" not in info.__slots__
     assert "ssid" not in info.__slots__
 
