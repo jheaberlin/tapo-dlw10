@@ -22,7 +22,11 @@ jobs:
   hassfest:
     name: Hassfest
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
       - name: Validate with Hassfest
         uses: home-assistant/actions/hassfest@master
 
@@ -33,9 +37,9 @@ jobs:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip

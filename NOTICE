@@ -1,4 +1,4 @@
-Tapo DLW10 experimental Home Assistant integration
+Tapo Smart Lock Home Assistant integration
 
 The DLKLAP transport and encryption logic in this project is adapted from
 python-kasa pull request #1729, authored by Ted Holtz:
