@@ -18,7 +18,7 @@ async def async_get_config_entry_diagnostics(
     coordinator: DLW10Coordinator = hass.data[DOMAIN][entry.entry_id]
     info = coordinator.data
     return {
-        "integration_version": "0.2.0",
+        "integration_version": "0.3.0",
         "protocol": "DLKLAP",
         "poll_interval_seconds": coordinator.poll_interval,
         "effective_poll_interval_seconds": (

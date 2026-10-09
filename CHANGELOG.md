@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+All notable changes to Tapo Smart Lock are documented here.
+
+## [0.3.0] - 2026-10-09
 
 - Reduce default polling from 5 to 300 seconds; migrate legacy five-second
   entries once, preserving other intervals and allowing later reconfiguration.
@@ -14,7 +16,6 @@
 - Clean up sessions and coordinator timers on failed setup and unload.
 - Add protocol, coordinator, migration, and lifecycle regression coverage.
 
-All notable changes to Tapo Smart Lock are documented here.
 
 ## [0.2.0] - 2026-08-09
 
@@ -56,6 +57,7 @@ All notable changes to Tapo Smart Lock are documented here.
 - Direct LAN status, lock, and unlock using the DLKLAP protocol
 - UI configuration and sanitized diagnostics
 
+[0.3.0]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.0
 [0.2.0]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.2.0
 [0.1.1]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.1.0
