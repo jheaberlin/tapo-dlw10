@@ -27,7 +27,7 @@ HomeKit Bridge.
 - Native Home Assistant lock entity with locked, unlocked, locking, unlocking,
   jammed, and unknown states
 - Immediate post-command verification
-- Five-second default detection of manual lock changes
+- Battery-conscious five-minute default polling with failure backoff
 - Battery percentage, low-battery, and Wi-Fi signal-strength entities
 - UI setup, reauthentication, and reconfiguration
 - Sanitized downloadable diagnostics
@@ -72,14 +72,39 @@ Configuration performs discovery, selects the matching cloud lock by MAC
 address, establishes DLKLAP, and reads device information. It does not move the
 bolt.
 
-The default poll interval is **5 seconds**, matching Home Assistant's built-in
-TP-Link integration. Manual changes are visible within one polling interval.
+The default poll interval is **300 seconds**. Manual changes are visible within
+one polling interval.
 Home Assistant lock/unlock commands perform their own verification and do not
 wait for the regular interval.
 
 To change the lock IP, Tapo name, or polling interval later, open the integration
 entry and choose **Reconfigure**. A rejected Tapo login automatically starts
 Home Assistant's reauthentication flow.
+
+## Battery use and session recovery
+
+The default is **300 seconds** (288 scheduled reads per day instead of 17,280
+at five seconds). Actual battery savings depend on lock firmware, Wi-Fi, and
+usage; this is a request-count reduction, not a measured battery-life claim.
+Manual/app changes can take up to the polling interval to appear. All entities
+share one status request. Home Assistant commands still read the current state
+and verify the result immediately, with no extra refresh afterward.
+
+On upgrade, entries using the old five-second interval move to 300 seconds once.
+Other configured intervals are preserved. You can select five seconds again in
+**Reconfigure**, but frequent polling can keep waking the battery-powered lock.
+
+Failed polls double the interval up to one hour; a successful read or command
+restores the configured interval. There are no background keepalives. Local
+sessions are reused until rejected, then a read may renew the session once.
+Network failures wait until the next attempt instead of immediately repeating
+wake handshakes. Rejected cloud requests renew the token once; cloud outages
+remain connection errors rather than prompting for a new password. Each config
+entry keeps a stable cloud terminal ID across reloads and restarts.
+
+Polling and commands are serialized. Physical commands are never replayed after
+an uncertain response, and an unconfirmed command marks the entities unavailable
+until a subsequent successful read. Secrets and sessions remain in memory only.
 
 ## Entities
 

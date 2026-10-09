@@ -21,6 +21,12 @@ async def async_get_config_entry_diagnostics(
         "integration_version": "0.2.0",
         "protocol": "DLKLAP",
         "poll_interval_seconds": coordinator.poll_interval,
+        "effective_poll_interval_seconds": (
+            coordinator.update_interval.total_seconds()
+            if coordinator.update_interval
+            else None
+        ),
+        "last_update_success": coordinator.last_update_success,
         "model": info.model,
         "firmware_version": info.firmware_version,
         "hardware_version": info.hardware_version,

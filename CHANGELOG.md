@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Reduce default polling from 5 to 300 seconds; migrate legacy five-second
+  entries once, preserving other intervals and allowing later reconfiguration.
+- Back off failed polls up to one hour and restore the interval on recovery.
+- Renew expired cloud tokens once, retain a stable cloud terminal ID across
+  reloads, and distinguish outages from account failures.
+- Reuse local sessions, clear stale cookies, and avoid immediate wake retries
+  after transport failures.
+- Serialize polling with complete command/verification operations; never replay
+  a physical command and mark uncertain outcomes unavailable until refreshed.
+- Clean up sessions and coordinator timers on failed setup and unload.
+- Add protocol, coordinator, migration, and lifecycle regression coverage.
+
 All notable changes to Tapo Smart Lock are documented here.
 
 ## [0.2.0] - 2026-08-09
