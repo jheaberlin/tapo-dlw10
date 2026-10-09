@@ -35,7 +35,7 @@ SUPPORTED_MODELS = {"DLW10"}
 
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 15.0
-HANDSHAKE0_RETRIES = 4
+HANDSHAKE0_RETRIES = 2
 HANDSHAKE0_RETRY_DELAY = 2.0
 VERIFY_POLLS = 5
 VERIFY_DELAY = 2.0
@@ -134,7 +134,13 @@ class DLW10Client:
     """One persistent cloud-assisted local DLKLAP client."""
 
     def __init__(
-        self, *, host: str, username: str, password: str, lock_name: str
+        self,
+        *,
+        host: str,
+        username: str,
+        password: str,
+        lock_name: str,
+        client_id: str | None = None,
     ) -> None:
         try:
             address = ipaddress.ip_address(host)
@@ -156,7 +162,11 @@ class DLW10Client:
         self._password = password
         self._lock_name = lock_name.strip()
         self._base_url = f"http://{self.host}:80"
-        self._app_uuid = str(uuid.uuid4()).upper()
+        # A config entry represents one app terminal across reloads/restarts.
+        # Validation before an entry exists uses a temporary identity.
+        self._app_uuid = str(
+            uuid.uuid5(uuid.NAMESPACE_OID, client_id) if client_id else uuid.uuid4()
+        ).upper()
         self._protocol_uuid = base64.b64encode(
             hashlib.md5(uuid.uuid4().bytes, usedforsecurity=False).digest()
         ).decode()
@@ -170,6 +180,8 @@ class DLW10Client:
         self._session_cookie: str | None = None
         self._handshake_done = False
         self._request_lock = asyncio.Lock()
+        self._operation_lock = asyncio.Lock()
+        self._closed = False
         self._lock_client: httpx.AsyncClient | None = None
 
     @property
@@ -185,6 +197,11 @@ class DLW10Client:
 
     async def async_get_device_info(self) -> DLW10Info:
         """Read device state, retrying once after an expired local session."""
+        async with self._operation_lock:
+            return await self._read_device_info()
+
+    async def _read_device_info(self) -> DLW10Info:
+        """Read state while the operation lock is held."""
         raw = await self._async_call("get_device_info", retry_session=True)
         info = self._parse_info(raw)
         self._validate_local_device(raw)
@@ -195,7 +212,12 @@ class DLW10Client:
         if target not in (0, 1):
             raise ValueError("target must be 0 (locked) or 1 (unlocked)")
 
-        initial = await self.async_get_device_info()
+        async with self._operation_lock:
+            return await self._set_lock_status(target)
+
+    async def _set_lock_status(self, target: int) -> DLW10Info:
+        """Keep the preflight, command and verification in one operation."""
+        initial = await self._read_device_info()
         if initial.lock_status not in (0, 1):
             raise DlklapUnsafeStateError(
                 "The lock is uninitialized, jammed, or in an unknown state"
@@ -214,7 +236,7 @@ class DLW10Client:
             last_info = initial
             for _ in range(VERIFY_POLLS):
                 await asyncio.sleep(VERIFY_DELAY)
-                last_info = await self.async_get_device_info()
+                last_info = await self._read_device_info()
                 if last_info.lock_status == target:
                     return last_info
                 if last_info.lock_status not in (0, 1):
@@ -232,14 +254,16 @@ class DLW10Client:
 
     async def async_close(self) -> None:
         """Close the persistent local HTTP client and clear secrets."""
-        client = self._lock_client
-        self._lock_client = None
-        if client is not None:
-            await client.aclose()
-        self._reset_session()
-        self._token = None
-        self._account_id = None
-        self._password = ""
+        async with self._operation_lock:
+            self._closed = True
+            client = self._lock_client
+            self._reset_session()
+            self._lock_client = None
+            self._token = None
+            self._account_id = None
+            self._password = ""
+            if client is not None:
+                await client.aclose()
 
     async def _async_call(
         self,
@@ -249,6 +273,8 @@ class DLW10Client:
         retry_session: bool,
     ) -> dict[str, Any]:
         async with self._request_lock:
+            if self._closed:
+                raise DlklapConnectionError("The lock client is closed")
             attempts = 2 if retry_session else 1
             for attempt in range(attempts):
                 try:
@@ -261,6 +287,12 @@ class DLW10Client:
                         raise DlklapConnectionError(
                             "The local DLKLAP session expired"
                         ) from None
+                except (httpx.HTTPError, OSError, asyncio.CancelledError) as error:
+                    # An interrupted request may have consumed its sequence number.
+                    self._reset_session()
+                    if isinstance(error, asyncio.CancelledError):
+                        raise
+                    raise DlklapConnectionError("The local request failed") from None
             raise DlklapConnectionError("The DLKLAP request failed")
 
     async def _establish_session(self) -> None:
@@ -301,41 +333,33 @@ class DLW10Client:
                 body = response.json()
         except (httpx.HTTPError, ValueError):
             raise DlklapConnectionError("Tapo cloud login request failed") from None
-        if body.get("error_code", -1) != 0:
-            raise DlklapAuthenticationError(
-                "Tapo cloud rejected the supplied credentials"
-            )
+        if not isinstance(body, dict):
+            raise DlklapConnectionError("Tapo cloud returned an invalid response")
+        code = str(body.get("error_code", body.get("errorCode", "")))
+        if code in ("-20601", "-20675", "-20677"):
+            raise DlklapAuthenticationError("Tapo cloud rejected the account login")
+        if code != "0":
+            raise DlklapConnectionError("Tapo cloud login is temporarily unavailable")
         try:
-            self._token = body["result"]["token"]
-            self._account_id = body["result"]["accountId"]
+            token = body["result"]["token"]
+            account_id = body["result"]["accountId"]
+            if not all(
+                isinstance(value, str) and value for value in (token, account_id)
+            ):
+                raise TypeError
+            self._token = token
+            self._account_id = account_id
         except (KeyError, TypeError):
-            raise DlklapAuthenticationError(
+            raise DlklapConnectionError(
                 "Tapo cloud login returned an unexpected response"
             ) from None
 
     async def _ensure_cloud_device_id(self) -> None:
         if self._cloud_device_id:
             return
-        if self._token is None:
-            raise DlklapAuthenticationError("Cloud login is incomplete")
-        try:
-            async with httpx.AsyncClient(timeout=READ_TIMEOUT) as client:
-                response = await client.post(
-                    CLOUD_LOGIN_URL,
-                    params={"token": self._token},
-                    json={"method": "getDeviceList"},
-                )
-                response.raise_for_status()
-                body = response.json()
-        except (httpx.HTTPError, ValueError):
-            # Never propagate httpx's URL: this endpoint places the token in it.
-            raise DlklapConnectionError(
-                "Tapo cloud device-list request failed"
-            ) from None
-        if body.get("error_code", -1) != 0:
-            raise DlklapAuthenticationError(
-                "Tapo cloud rejected the authenticated device-list request"
-            )
+        body = await self._cloud_request(
+            CLOUD_LOGIN_URL, {"method": "getDeviceList"}, control_key=False
+        )
 
         result = body.get("result")
         if not isinstance(result, dict):
@@ -473,47 +497,84 @@ class DLW10Client:
         ) from None
 
     async def _fetch_control_key(self, secret: str, random4: bytes) -> str:
-        if self._token is None or self._cloud_device_id is None:
-            raise DlklapAuthenticationError("Cloud lock selection is incomplete")
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"ut|{self._token}",
-            "app-cid": f"app:Tapo_Android:{self._app_uuid}",
-            "App-Type": "Tapo_Android",
-            "x-app-name": "Tapo_Android",
-            "UUID": self._app_uuid,
-            "Terminal-Id": self._app_uuid,
-            "x-term-id": self._app_uuid,
-            "Platform": "ANDROID",
-            "X-App-Os": "android",
-        }
-        try:
-            # TP-Link serves this endpoint with its private CA. TLS verification
-            # is disabled only here; the password-bearing login stays verified.
-            async with httpx.AsyncClient(
-                timeout=READ_TIMEOUT,
-                verify=False,  # noqa: S501
-            ) as client:
-                response = await client.post(
-                    CONTROL_KEY_URL.format(device_id=self._cloud_device_id),
-                    json={"secret": secret, "random": random4.hex().upper()},
-                    headers=headers,
-                )
-                response.raise_for_status()
-                body = response.json()
-        except (httpx.HTTPError, ValueError):
-            raise DlklapAuthenticationError(
-                "The cloud control-key exchange failed"
-            ) from None
+        if self._cloud_device_id is None:
+            raise DlklapConnectionError("Cloud lock selection is incomplete")
+        body = await self._cloud_request(
+            CONTROL_KEY_URL.format(device_id=self._cloud_device_id),
+            {"secret": secret, "random": random4.hex().upper()},
+            control_key=True,
+        )
         container = body.get("result") or body.get("data") or body
         if not isinstance(container, dict):
-            raise DlklapAuthenticationError(
-                "The cloud control-key response was unexpected"
-            )
+            raise DlklapConnectionError("The cloud control-key response was unexpected")
         control_key = container.get("controlKey") or container.get("control_key")
-        if not isinstance(control_key, str) or not control_key:
-            raise DlklapAuthenticationError("The cloud did not return a control key")
+        if (
+            not isinstance(control_key, str)
+            or not control_key
+            or not control_key.isascii()
+        ):
+            raise DlklapConnectionError("The cloud did not return a valid control key")
         return control_key
+
+    async def _cloud_request(
+        self, url: str, payload: dict[str, Any], *, control_key: bool
+    ) -> dict[str, Any]:
+        """Renew a rejected cloud token once, without retrying transport failures.
+
+        Cloud endpoints have different error envelopes. An expired token or HTTP
+        auth rejection gets one fresh login; only login rejects user credentials.
+        Service failures and malformed responses must not trigger HA reauth.
+        """
+        for attempt in range(2):
+            await self._ensure_cloud_login()
+            headers = {}
+            params = {}
+            if control_key:
+                headers = {
+                    "Authorization": f"ut|{self._token}",
+                    "app-cid": f"app:Tapo_Android:{self._app_uuid}",
+                    "App-Type": "Tapo_Android",
+                    "x-app-name": "Tapo_Android",
+                    "UUID": self._app_uuid,
+                    "Terminal-Id": self._app_uuid,
+                    "x-term-id": self._app_uuid,
+                    "Platform": "ANDROID",
+                    "X-App-Os": "android",
+                }
+            else:
+                params = {"token": self._token}
+            try:
+                # Preserve the existing private-CA exception for control keys only.
+                # Password-bearing login and device-list requests verify TLS.
+                async with httpx.AsyncClient(
+                    timeout=READ_TIMEOUT, verify=not control_key
+                ) as client:
+                    response = await client.post(
+                        url, json=payload, headers=headers, params=params
+                    )
+                    rejected = response.status_code in (401, 403)
+                    if not rejected:
+                        response.raise_for_status()
+                        body = response.json()
+                        if not isinstance(body, dict):
+                            raise ValueError
+                        code = body.get("error_code", body.get("errorCode", 0))
+                        if str(code) == "0":
+                            return body
+                        rejected = str(code) == "-20651"
+                        if not rejected:
+                            raise DlklapConnectionError(
+                                "Tapo cloud rejected the request"
+                            )
+            except (httpx.HTTPError, ValueError):
+                # httpx URLs can include a token. Do not expose the exception.
+                raise DlklapConnectionError("Tapo cloud request failed") from None
+            self._token = None
+            if attempt:
+                raise DlklapConnectionError(
+                    "Tapo cloud rejected the request after token renewal"
+                )
+        raise DlklapConnectionError("Tapo cloud request failed")
 
     async def _handshake1(
         self, client: httpx.AsyncClient, control_key: str
@@ -536,7 +597,7 @@ class DLW10Client:
         remote_seed = response.content[:16]
         proof = response.content[16:]
         if proof != _sha256(local_seed + remote_seed + lmk):
-            raise DlklapAuthenticationError("The lock rejected the cloud control key")
+            raise DlklapConnectionError("The lock rejected the cloud control key")
         self._session_cookie = self._extract_session_cookie(response)
         if self._session_cookie is None:
             raise DlklapConnectionError("The lock did not establish a local session")
@@ -580,9 +641,12 @@ class DLW10Client:
                 content=payload,
                 headers=self._headers(with_cookie=True),
             )
-        except (httpx.ConnectError, httpx.TimeoutException):
-            raise _SessionExpiredError from None
-        if response.status_code == 403:
+        except httpx.HTTPError:
+            # A sleeping/offline lock is not evidence of an expired session.
+            # Invalidate it for the next scheduled attempt, without waking again.
+            self._reset_session()
+            raise DlklapConnectionError("The local lock request failed") from None
+        if response.status_code in (401, 403):
             raise _SessionExpiredError
         if response.status_code != 200:
             raise DlklapConnectionError("The lock rejected the encrypted request")
@@ -590,11 +654,13 @@ class DLW10Client:
             body = json.loads(self._session.decrypt(response.content))
         except (ValueError, KeyError, UnicodeDecodeError):
             raise _SessionExpiredError from None
+        if not isinstance(body, dict):
+            raise DlklapConnectionError("The lock returned an invalid response")
         error_code = body.get("error_code")
+        if error_code in (9999, -40401):
+            raise _SessionExpiredError
         if error_code != 0:
-            raise DlklapError(
-                f"The lock returned protocol error {error_code!r} for {method}"
-            )
+            raise DlklapError("The lock rejected the requested operation")
         result = body.get("result")
         if result is None:
             return {}
@@ -671,6 +737,8 @@ class DLW10Client:
         self._session = None
         self._session_cookie = None
         self._handshake_done = False
+        if self._lock_client is not None:
+            self._lock_client.cookies.clear()
 
 
 class _SessionExpiredError(Exception):

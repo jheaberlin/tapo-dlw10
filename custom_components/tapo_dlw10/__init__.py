@@ -23,6 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         username=entry.data[CONF_USERNAME],
         password=entry.data[CONF_PASSWORD],
         lock_name=entry.data[CONF_LOCK_NAME],
+        client_id=entry.entry_id,
     )
     coordinator = DLW10Coordinator(
         hass,
@@ -32,13 +33,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     try:
         await coordinator.async_config_entry_first_refresh()
-    except Exception:
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+        await hass.config_entries.async_forward_entry_setups(
+            entry, [Platform(platform) for platform in PLATFORMS]
+        )
+    except BaseException:
+        await coordinator.async_shutdown()
         await client.async_close()
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         raise
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-    await hass.config_entries.async_forward_entry_setups(
-        entry, [Platform(platform) for platform in PLATFORMS]
-    )
     return True
 
 
@@ -48,6 +51,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry, [Platform(platform) for platform in PLATFORMS]
     )
     if unloaded:
+        await coordinator.async_shutdown()
         await coordinator.client.async_close()
         hass.data[DOMAIN].pop(entry.entry_id)
     return unloaded
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Replace the legacy five-second default once on upgrade."""
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        data = dict(entry.data)
+        if data.get(CONF_POLL_INTERVAL, 5) == 5:
+            data[CONF_POLL_INTERVAL] = DEFAULT_POLL_INTERVAL
+        hass.config_entries.async_update_entry(entry, data=data, minor_version=2)
+    return True

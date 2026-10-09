@@ -20,7 +20,7 @@ Use Python 3.12 or newer:
 
 ```bash
 python3.12 -m venv .venv
-.venv/bin/pip install cryptography httpx pytest pytest-asyncio ruff
+.venv/bin/pip install "homeassistant==2024.12.5" pytest pytest-asyncio ruff
 .venv/bin/ruff check .
 .venv/bin/pytest
 ```

@@ -37,7 +37,7 @@
         "data_description": {
           "host": "Private IPv4 address reserved for this lock on your LAN.",
           "lock_name": "Exact name shown for this lock in the Tapo app.",
-          "poll_interval": "Seconds between checks for manual lock changes (5–3600)."
+          "poll_interval": "Seconds between checks (5–3600; recommended 300). Short intervals increase battery use. Commands verify immediately."
         },
         "description": "Update the local connection for {name}. Validation is read-only and never moves the lock.",
         "title": "Reconfigure Tapo Smart Lock"
@@ -54,7 +54,7 @@
           "host": "Private IPv4 address reserved for this lock on your LAN.",
           "lock_name": "Exact name shown for this lock in the Tapo app.",
           "password": "Password for the Tapo account that owns this lock.",
-          "poll_interval": "Seconds between checks for manual lock changes (5–3600).",
+          "poll_interval": "Seconds between checks (5–3600; recommended 300). Short intervals increase battery use. Commands verify immediately.",
           "username": "Email address used to sign in to the Tapo app."
         },
         "description": "Connect Home Assistant directly to a Tapo DLW10. Setup authenticates and reads status only; it never moves the lock.",

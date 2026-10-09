@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.components.lock import LockEntity
@@ -32,6 +33,7 @@ class DLW10Lock(DLW10Entity, LockEntity):
     def __init__(self, coordinator: DLW10Coordinator) -> None:
         super().__init__(coordinator, "lock")
         self._target_status: int | None = None
+        self._command_lock = asyncio.Lock()
 
     @property
     def is_locked(self) -> bool | None:
@@ -61,13 +63,16 @@ class DLW10Lock(DLW10Entity, LockEntity):
         await self._async_set_status(UNLOCKED)
 
     async def _async_set_status(self, target: int) -> None:
+        async with self._command_lock:
+            await self._async_execute_status(target)
+
+    async def _async_execute_status(self, target: int) -> None:
         self._target_status = target
         self.async_write_ha_state()
         try:
-            info = await self.coordinator.client.async_set_lock_status(target)
+            await self.coordinator.async_set_lock_status(target)
         except DlklapError as error:
             raise HomeAssistantError(str(error)) from error
         finally:
             self._target_status = None
             self.async_write_ha_state()
-        self.coordinator.async_set_updated_data(info)

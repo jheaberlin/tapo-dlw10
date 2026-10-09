@@ -31,6 +31,7 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configure one Tapo DLW10 using its Tapo name and private IPv4 address."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -70,7 +71,9 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_USERNAME: user_input[CONF_USERNAME],
                 CONF_PASSWORD: user_input[CONF_PASSWORD],
             }
-            info, error = await self._async_validate(candidate)
+            info, error = await self._async_validate(
+                candidate, client_id=entry.entry_id
+            )
             if error:
                 errors["base"] = error
             elif info is None or info.identity != entry.unique_id:
@@ -102,7 +105,9 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             candidate = {**entry.data, **user_input}
-            info, error = await self._async_validate(candidate)
+            info, error = await self._async_validate(
+                candidate, client_id=entry.entry_id
+            )
             if error:
                 errors["base"] = error
             elif info is None or info.identity != entry.unique_id:
@@ -124,7 +129,7 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _async_validate(
-        self, data: dict[str, Any]
+        self, data: dict[str, Any], *, client_id: str | None = None
     ) -> tuple[DLW10Info | None, str | None]:
         """Perform the same read-only identity test for every flow."""
         client: DLW10Client | None = None
@@ -134,6 +139,7 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 username=data[CONF_USERNAME],
                 password=data[CONF_PASSWORD],
                 lock_name=data[CONF_LOCK_NAME],
+                client_id=client_id,
             )
             return await client.async_connect(), None
         except DlklapInvalidHostError:

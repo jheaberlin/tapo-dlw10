@@ -44,7 +44,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install test dependencies
-        run: pip install cryptography httpx pytest pytest-asyncio ruff
+        run: pip install "homeassistant==2024.12.5" pytest pytest-asyncio ruff
       - name: Run Ruff
         run: ruff check .
       - name: Run unit tests
