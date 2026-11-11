@@ -77,9 +77,12 @@ one polling interval.
 Home Assistant lock/unlock commands perform their own verification and do not
 wait for the regular interval.
 
-To change the lock IP, Tapo name, or polling interval later, open the integration
-entry and choose **Reconfigure**. A rejected Tapo login automatically starts
-Home Assistant's reauthentication flow.
+To change the lock IP, Tapo name, polling interval, or Tapo account, open the
+integration entry and choose **Reconfigure**. Enter the Tapo email and password
+there to sign in again; leave the password blank to keep the saved one. A
+rejected Tapo login also starts Home Assistant's reauthentication flow. If the
+card only says it cannot connect, use **Reconfigure** rather than deleting the
+device.
 
 ## Battery use and session recovery
 

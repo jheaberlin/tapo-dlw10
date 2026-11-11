@@ -329,6 +329,10 @@ class DLW10Client:
                         },
                     },
                 )
+                if response.status_code in (401, 403):
+                    raise DlklapAuthenticationError(
+                        "Tapo cloud rejected the account login"
+                    )
                 response.raise_for_status()
                 body = response.json()
         except (httpx.HTTPError, ValueError):
@@ -522,8 +526,9 @@ class DLW10Client:
         """Renew a rejected cloud token once, without retrying transport failures.
 
         Cloud endpoints have different error envelopes. An expired token or HTTP
-        auth rejection gets one fresh login; only login rejects user credentials.
-        Service failures and malformed responses must not trigger HA reauth.
+        auth rejection gets one fresh login. A second auth rejection means the
+        account is not signed in and must prompt for credentials. Transport
+        failures and other service errors must not trigger HA reauth.
         """
         for attempt in range(2):
             await self._ensure_cloud_login()
@@ -571,8 +576,8 @@ class DLW10Client:
                 raise DlklapConnectionError("Tapo cloud request failed") from None
             self._token = None
             if attempt:
-                raise DlklapConnectionError(
-                    "Tapo cloud rejected the request after token renewal"
+                raise DlklapAuthenticationError(
+                    "Tapo cloud rejected the account after signing in again"
                 )
         raise DlklapConnectionError("Tapo cloud request failed")
 

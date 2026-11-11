@@ -2,6 +2,14 @@
 
 All notable changes to Tapo Smart Lock are documented here.
 
+## [0.3.1] - 2026-11-11
+
+- Prompt to sign in again when Tapo rejects the account, including an HTTP
+  login rejection and a cloud request that stays unauthorized after one token
+  renewal.
+- Add the Tapo email and password to **Reconfigure** so a saved sign-in can be
+  replaced without deleting the lock. A blank password keeps the saved one.
+
 ## [0.3.0] - 2026-10-09
 
 - Reduce default polling from 5 to 300 seconds; migrate legacy five-second
@@ -57,6 +65,7 @@ All notable changes to Tapo Smart Lock are documented here.
 - Direct LAN status, lock, and unlock using the DLKLAP protocol
 - UI configuration and sanitized diagnostics
 
+[0.3.1]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.1
 [0.3.0]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.0
 [0.2.0]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.2.0
 [0.1.1]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.1.1

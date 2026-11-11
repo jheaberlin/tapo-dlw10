@@ -224,7 +224,7 @@ async def test_repeated_cloud_rejection_is_bounded(monkeypatch):
         return httpx.Response(403)
 
     mock_cloud(monkeypatch, handler)
-    with pytest.raises(API.DlklapConnectionError):
+    with pytest.raises(API.DlklapAuthenticationError):
         await client._cloud_request(API.CLOUD_LOGIN_URL, {}, control_key=True)
     assert len(requests) == 3
 
@@ -254,6 +254,16 @@ async def test_cloud_outages_do_not_relogin(monkeypatch, failure):
     assert "token" not in str(error.value)
     assert len(requests) == 1
     assert client._token == "keep-token"  # noqa: S105
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403])
+async def test_login_http_rejection_asks_for_credentials(monkeypatch, status):
+    import httpx
+
+    mock_cloud(monkeypatch, lambda request: httpx.Response(status))
+    with pytest.raises(API.DlklapAuthenticationError):
+        await make_client()._ensure_cloud_login()
 
 
 @pytest.mark.asyncio
