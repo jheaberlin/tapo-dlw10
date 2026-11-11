@@ -28,6 +28,14 @@ python3.12 -m venv .venv
 Keep changes on a dedicated branch. Pull requests should include unit tests for
 protocol behavior and should pass HACS, Hassfest, Ruff, and pytest validation.
 
+## Releases
+
+HACS installs the latest GitHub release, not the latest commit. Merging to
+`prototype/hacs-dlw10` publishes a release for the version in `manifest.json`
+when that tag does not already exist. Bump `manifest.json` and `CHANGELOG.md`
+in the same change. The release notes are the changelog sections newer than
+the previous release.
+
 ## Live-device experiments
 
 - Explain what an experiment is intended to prove before running it.

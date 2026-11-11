@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - prototype/hacs-dlw10
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub release
+    if: github.ref == 'refs/heads/prototype/hacs-dlw10'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Publish the manifest version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("custom_components/tapo_dlw10/manifest.json"))["version"])')"
+          tag="v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists"
+            exit 0
+          fi
+          previous="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""')"
+          python3 scripts/release_notes.py "$previous" > "${RUNNER_TEMP}/release-notes.md"
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "Tapo Smart Lock ${tag}" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md"
