@@ -7,8 +7,9 @@
       "reconfigure_successful": "Lock configuration updated successfully."
     },
     "error": {
-      "cannot_connect": "Could not connect to the lock or Tapo cloud.",
-      "invalid_auth": "The Tapo cloud credentials were rejected.",
+      "cannot_connect": "Could not connect to the lock or Tapo cloud. Enter the Tapo account email and password to sign in again.",
+      "invalid_auth": "The Tapo cloud credentials were rejected. Enter the account email and password to sign in again.",
+      "password_required": "Enter the Tapo account password to replace the saved sign-in.",
       "invalid_host": "Enter the lock's private IPv4 address.",
       "lock_not_found": "The Tapo app name did not select exactly one lock in this account.",
       "unknown": "Unexpected error while testing the read-only connection.",
@@ -32,15 +33,19 @@
         "data": {
           "host": "Local IP address",
           "lock_name": "Lock name in the Tapo app",
-          "poll_interval": "Polling interval"
+          "password": "Tapo account password",
+          "poll_interval": "Polling interval",
+          "username": "Tapo account email"
         },
         "data_description": {
           "host": "Private IPv4 address reserved for this lock on your LAN.",
           "lock_name": "Exact name shown for this lock in the Tapo app.",
-          "poll_interval": "Seconds between checks (5–3600; recommended 300). Short intervals increase battery use. Commands verify immediately."
+          "password": "Leave blank to keep the saved password. Enter a password to replace the saved Tapo sign-in and start a new session.",
+          "poll_interval": "Seconds between checks (5–3600; recommended 300). Short intervals increase battery use. Commands verify immediately.",
+          "username": "Email address used to sign in to the Tapo app."
         },
-        "description": "Update the local connection for {name}. Validation is read-only and never moves the lock.",
-        "title": "Reconfigure Tapo Smart Lock"
+        "description": "Sign in again or update the connection for {name}. Enter the Tapo email and password to replace the saved account. Leave the password blank to keep it. This test reads status only and never moves the lock.",
+        "title": "Sign in to Tapo Smart Lock"
       },
       "user": {
         "data": {

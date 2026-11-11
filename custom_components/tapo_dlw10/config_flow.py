@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -100,32 +101,44 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Update address, Tapo name, or polling without removing the device."""
+        """Update the connection or replace the saved Tapo sign-in."""
         entry = self._entry_from_context()
         errors: dict[str, str] = {}
         if user_input is not None:
-            candidate = {**entry.data, **user_input}
-            info, error = await self._async_validate(
-                candidate, client_id=entry.entry_id
-            )
-            if error:
-                errors["base"] = error
-            elif info is None or info.identity != entry.unique_id:
-                errors["base"] = "wrong_device"
+            account = _account_for_reconfigure(entry.data, user_input)
+            if account is None:
+                errors["base"] = "password_required"
             else:
-                self.hass.config_entries.async_update_entry(
-                    entry,
-                    title=candidate[CONF_LOCK_NAME],
-                    data=candidate,
+                username, password = account
+                candidate = {
+                    **entry.data,
+                    **user_input,
+                    CONF_USERNAME: username,
+                    CONF_PASSWORD: password,
+                }
+                info, error = await self._async_validate(
+                    candidate, client_id=entry.entry_id
                 )
-                await self.hass.config_entries.async_reload(entry.entry_id)
-                return self.async_abort(reason="reconfigure_successful")
+                if error:
+                    errors["base"] = error
+                elif info is None or info.identity != entry.unique_id:
+                    errors["base"] = "wrong_device"
+                else:
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        title=candidate[CONF_LOCK_NAME],
+                        data=candidate,
+                    )
+                    await self.hass.config_entries.async_reload(entry.entry_id)
+                    return self.async_abort(reason="reconfigure_successful")
 
         defaults = {**entry.data, **(user_input or {})}
+        defaults.pop(CONF_PASSWORD, None)
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_connection_schema(defaults),
             errors=errors,
+            description_placeholders={"name": entry.title},
         )
 
     async def _async_validate(
@@ -178,12 +191,36 @@ def _poll_interval() -> Any:
     )
 
 
+def _account_for_reconfigure(
+    stored: Mapping[str, Any], submitted: Mapping[str, Any]
+) -> tuple[str, str] | None:
+    """Choose the account to test, keeping the saved password when left blank.
+
+    A different email requires a password so a renamed account cannot reuse the
+    previous secret. None means the form must ask for a password.
+    """
+    username = str(submitted.get(CONF_USERNAME, "")).strip() or str(
+        stored.get(CONF_USERNAME, "")
+    )
+    password = submitted.get(CONF_PASSWORD)
+    if isinstance(password, str) and password:
+        return username, password
+    if username != stored.get(CONF_USERNAME):
+        return None
+    stored_password = stored.get(CONF_PASSWORD)
+    if not isinstance(stored_password, str) or not stored_password:
+        return None
+    return username, stored_password
+
+
 def _connection_schema(defaults: dict[str, Any]) -> vol.Schema:
-    """Fields editable through reconfigure without revealing the password."""
+    """Reconfigure fields, including a blank password that keeps the saved one."""
     return vol.Schema(
         {
             vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
             vol.Required(CONF_LOCK_NAME, default=defaults.get(CONF_LOCK_NAME, "")): str,
+            vol.Required(CONF_USERNAME, default=defaults.get(CONF_USERNAME, "")): str,
+            vol.Optional(CONF_PASSWORD): str,
             vol.Required(
                 CONF_POLL_INTERVAL,
                 default=defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),

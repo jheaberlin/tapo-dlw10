@@ -62,6 +62,15 @@ async def test_authentication_failure_is_distinct(coordinator):
         await coordinator._async_update_data()
 
 
+async def test_poll_authentication_failure_starts_reauth(coordinator):
+    coordinator.client.async_get_device_info.side_effect = DlklapAuthenticationError(
+        "bad login"
+    )
+    await coordinator.async_refresh()
+    coordinator.entry.async_start_reauth.assert_called_once_with(coordinator.hass)
+    assert not coordinator.last_update_success
+
+
 async def test_command_publishes_without_extra_poll_and_restores_interval(coordinator):
     coordinator._record_failure()
     await coordinator.async_set_lock_status(0)
