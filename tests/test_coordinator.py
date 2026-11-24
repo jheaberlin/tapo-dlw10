@@ -39,6 +39,25 @@ async def coordinator(tmp_path):
     await hass.async_stop()
 
 
+async def test_failed_poll_keeps_last_known_state(coordinator):
+    await coordinator.async_refresh()
+    updated = DLW10Info("id", "DLW10", None, None, 1, 70, False, 2)
+    coordinator.client.async_get_device_info.side_effect = DlklapConnectionError(
+        "asleep"
+    )
+    await coordinator.async_refresh()
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert coordinator.data == INFO
+    assert coordinator.update_interval == timedelta(seconds=1200)
+    coordinator.client.async_get_device_info.side_effect = None
+    coordinator.client.async_get_device_info.return_value = updated
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert coordinator.data == updated
+    assert coordinator.update_interval == timedelta(seconds=300)
+
+
 async def test_poll_backoff_and_recovery(coordinator):
     coordinator.client.async_get_device_info.side_effect = DlklapConnectionError(
         "offline"
@@ -78,6 +97,21 @@ async def test_command_publishes_without_extra_poll_and_restores_interval(coordi
     assert coordinator.update_interval == timedelta(seconds=300)
     coordinator.client.async_get_device_info.assert_not_awaited()
     coordinator.client.async_set_lock_status.assert_awaited_once_with(0)
+
+
+async def test_failed_poll_does_not_clear_an_uncertain_command(coordinator):
+    coordinator.async_set_updated_data(INFO)
+    coordinator.client.async_set_lock_status.side_effect = (
+        DlklapCommandOutcomeUnknownError("unknown")
+    )
+    with pytest.raises(DlklapCommandOutcomeUnknownError):
+        await coordinator.async_set_lock_status(1)
+    coordinator.client.async_get_device_info.side_effect = DlklapConnectionError(
+        "asleep"
+    )
+    await coordinator.async_refresh()
+    assert not coordinator.last_update_success
+    assert coordinator.data == INFO
 
 
 async def test_uncertain_command_marks_stale_state_unavailable(coordinator):
