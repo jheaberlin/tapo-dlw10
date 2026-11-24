@@ -7,8 +7,10 @@
       "reconfigure_successful": "Lock configuration updated successfully."
     },
     "error": {
-      "cannot_connect": "Could not connect to the lock or Tapo cloud. Enter the Tapo account email and password to sign in again.",
+      "cannot_connect": "Could not connect to the lock or Tapo cloud. Check that the lock and network are reachable, then try again.",
+      "discovery_failed": "The lock did not answer discovery. Confirm its IP address and that it is awake on Wi-Fi. The Tapo password was not rejected.",
       "invalid_auth": "The Tapo cloud credentials were rejected. Enter the account email and password to sign in again.",
+      "mfa_required": "Tapo cloud requires a verification code for this sign-in. Approve this terminal in the Tapo app, then try again.",
       "password_required": "Enter the Tapo account password to replace the saved sign-in.",
       "invalid_host": "Enter the lock's private IPv4 address.",
       "lock_not_found": "The Tapo app name did not select exactly one lock in this account.",

@@ -126,10 +126,11 @@ Battery and signal entities are categorized as diagnostics.
 |---|---|
 | Tapo DLW10, hardware 1.0 | Live-device validated |
 | Firmware 1.0.15 | Live-device validated |
+| Firmware 1.0.17 | Same DLKLAP discovery path; wake-before-discovery added |
 | DLKLAP, login version 2, HTTP port 80 | Supported |
 | Home Assistant 2024.12+ | Supported |
 | US Tapo accounts (`use1` control-key service) | Supported |
-| Other Tapo account regions | Not yet validated |
+| Other Tapo account regions | Control-key host follows the login response |
 | Tapo DL100 | Related protocol, not enabled in this integration |
 
 ## Troubleshooting
@@ -140,10 +141,24 @@ Restart Home Assistant and refresh the browser. Confirm that
 `custom_components/tapo_dlw10/manifest.json` exists under the Home Assistant
 configuration directory.
 
+**Setup says the lock did not answer discovery**
+
+The password was not rejected. A sleeping DLW10 often ignores UDP until its
+radio wakes. Confirm the reserved private IP, then retry setup. The integration
+opens a short connection to port 80 before discovery and waits for a reply from
+that IP on any source port.
+
 **The exact lock cannot be selected**
 
 Confirm the Tapo app name and local IP. The integration verifies the local
 discovery MAC against the cloud device list to avoid controlling the wrong lock.
+
+**Tapo asks for a verification code**
+
+This integration cannot enter a multi-factor code. Approve the Home Assistant
+terminal in the Tapo app, or use an account sign-in that does not require a
+code, then try again. When the password itself is rejected, Home Assistant asks
+you to sign in again.
 
 **Manual changes update too slowly**
 

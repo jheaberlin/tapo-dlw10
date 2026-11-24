@@ -2,6 +2,19 @@
 
 All notable changes to Tapo Smart Lock are documented here.
 
+## [0.3.3] - 2026-11-24
+
+- Sign in with the legacy Tapo cloud API when the account accepts it, and fall
+  back to the signed regional v2 login when that API rejects the account or is
+  unavailable. The regional app server is kept in memory for the device list
+  and token renewal. Multi-factor challenges are reported as a sign-in failure.
+- Wake a sleeping DLW10 before discovery, send the RSA probe and the short
+  UDP 20002 probe, and accept a discovery reply from the configured lock on
+  any source port. A lock that does not answer is no longer described as a
+  rejected password.
+- Use the control-key region from the login response when it is present. US
+  accounts still default to `use1`.
+
 ## [0.3.2] - 2026-11-11
 
 - Replace the integration icon and wordmark with a padlock that stays clear at
@@ -70,6 +83,7 @@ All notable changes to Tapo Smart Lock are documented here.
 - Direct LAN status, lock, and unlock using the DLKLAP protocol
 - UI configuration and sanitized diagnostics
 
+[0.3.3]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.3
 [0.3.2]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.2
 [0.3.1]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.1
 [0.3.0]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.0

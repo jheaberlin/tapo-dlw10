@@ -9,6 +9,7 @@ import voluptuous as vol
 
 from custom_components.tapo_dlw10.api import (
     DlklapAuthenticationError,
+    DlklapDiscoveryError,
     DLW10Info,
 )
 from custom_components.tapo_dlw10.config_flow import (
@@ -185,9 +186,7 @@ async def test_rejected_sign_in_stays_on_the_form(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_changed_email_without_password_does_not_connect(monkeypatch) -> None:
     client = Mock()
-    monkeypatch.setattr(
-        "custom_components.tapo_dlw10.config_flow.DLW10Client", client
-    )
+    monkeypatch.setattr("custom_components.tapo_dlw10.config_flow.DLW10Client", client)
     entry = Mock(entry_id="entry-1", unique_id="lock-id", data=dict(STORED))
     flow = _flow(entry)
     result = await flow.async_step_reconfigure(
@@ -202,3 +201,34 @@ async def test_changed_email_without_password_does_not_connect(monkeypatch) -> N
     assert result["errors"] == {"base": "password_required"}
     client.assert_not_called()
     flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_discovery_failure_does_not_ask_for_a_password(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def async_connect(self):
+            raise DlklapDiscoveryError(
+                "The configured IP did not answer Tapo discovery"
+            )
+
+        async def async_close(self):
+            return None
+
+    monkeypatch.setattr(
+        "custom_components.tapo_dlw10.config_flow.DLW10Client", FakeClient
+    )
+    flow = DLW10ConfigFlow()
+    flow.hass = Mock()
+    result = await flow.async_step_user(
+        {
+            "host": "192.168.1.10",
+            "lock_name": "Front Door",
+            "username": "owner@example.invalid",
+            "password": "secret",
+            "poll_interval": 300,
+        }
+    )
+    assert result["errors"] == {"base": "discovery_failed"}

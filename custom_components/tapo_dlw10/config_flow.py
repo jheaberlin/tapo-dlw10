@@ -14,7 +14,9 @@ from .api import (
     DlklapConnectionError,
     DlklapDeviceMismatchError,
     DlklapDeviceSelectionError,
+    DlklapDiscoveryError,
     DlklapInvalidHostError,
+    DlklapMfaRequiredError,
     DLW10Client,
     DLW10Info,
 )
@@ -157,12 +159,16 @@ class DLW10ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await client.async_connect(), None
         except DlklapInvalidHostError:
             return None, "invalid_host"
+        except DlklapMfaRequiredError:
+            return None, "mfa_required"
         except DlklapAuthenticationError:
             return None, "invalid_auth"
         except DlklapDeviceSelectionError:
             return None, "lock_not_found"
         except DlklapDeviceMismatchError:
             return None, "wrong_device"
+        except DlklapDiscoveryError:
+            return None, "discovery_failed"
         except DlklapConnectionError:
             return None, "cannot_connect"
         except Exception:  # noqa: BLE001 - never expose cloud payloads in UI.
