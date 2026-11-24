@@ -97,8 +97,9 @@ On upgrade, entries using the old five-second interval move to 300 seconds once.
 Other configured intervals are preserved. You can select five seconds again in
 **Reconfigure**, but frequent polling can keep waking the battery-powered lock.
 
-Failed polls double the interval up to one hour; a successful read or command
-restores the configured interval. There are no background keepalives. Local
+Failed polls double the interval up to one hour and leave the last known
+state in place. The next successful poll replaces that state. A successful
+read or command restores the configured interval. There are no background keepalives. Local
 sessions are reused until rejected, then a read may renew the session once.
 Network failures wait until the next attempt instead of immediately repeating
 wake handshakes. Rejected cloud requests renew the token once; cloud outages

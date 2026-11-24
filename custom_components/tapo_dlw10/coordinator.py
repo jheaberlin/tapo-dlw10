@@ -33,6 +33,7 @@ class DLW10Coordinator(DataUpdateCoordinator[DLW10Info]):
     ) -> None:
         self._operation_lock = asyncio.Lock()
         self._failures = 0
+        self._retaining_state = False
         self.entry = entry
         self.client = client
         self.device_name = entry.title
@@ -48,6 +49,7 @@ class DLW10Coordinator(DataUpdateCoordinator[DLW10Info]):
 
     def _record_success(self) -> None:
         self._failures = 0
+        self._retaining_state = False
         self.update_interval = timedelta(seconds=self.poll_interval)
 
     def _record_failure(self) -> None:
@@ -66,6 +68,18 @@ class DLW10Coordinator(DataUpdateCoordinator[DLW10Info]):
                 raise ConfigEntryAuthFailed("Tapo authentication failed") from error
             except DlklapError as error:
                 self._record_failure()
+                if self.data is not None and self.last_update_success:
+                    if self._retaining_state:
+                        _LOGGER.debug(
+                            "Still keeping the last known lock state: %s", error
+                        )
+                    else:
+                        _LOGGER.warning(
+                            "Keeping the last known lock state after a failed poll: %s",
+                            error,
+                        )
+                        self._retaining_state = True
+                    return self.data
                 raise UpdateFailed(str(error)) from error
             self._record_success()
             return info

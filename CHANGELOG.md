@@ -2,6 +2,12 @@
 
 All notable changes to Tapo Smart Lock are documented here.
 
+## [0.3.5] - 2026-11-24
+
+- Keep the last known lock, battery, and signal state when a poll fails, and
+  replace it on the next successful poll. An unconfirmed lock or unlock still
+  marks the entities unavailable until a later read succeeds.
+
 ## [0.3.4] - 2026-11-24
 
 - Sign in with the legacy Tapo cloud API when the account accepts it, and fall
@@ -87,6 +93,7 @@ All notable changes to Tapo Smart Lock are documented here.
 - Direct LAN status, lock, and unlock using the DLKLAP protocol
 - UI configuration and sanitized diagnostics
 
+[0.3.5]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.5
 [0.3.4]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.4
 [0.3.3]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.3
 [0.3.2]: https://github.com/jheaberlin/tapo-dlw10/releases/tag/v0.3.2
