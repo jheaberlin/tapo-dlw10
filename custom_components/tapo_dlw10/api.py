@@ -11,8 +11,10 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import hmac
 import ipaddress
 import json
+import re
 import secrets
 import socket
 import struct
@@ -20,6 +22,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from cryptography.hazmat.primitives import padding, serialization
@@ -27,9 +30,17 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 CLOUD_LOGIN_URL = "https://wap.tplinkcloud.com/"
-CONTROL_KEY_URL = (
-    "https://use1-app-server.iot.i.tplinknbu.com/v1/things/{device_id}/control-key"
+CLOUD_V2_GATEWAYS = (
+    "https://n-wap-gw.tplinkcloud.com",
+    "https://n-wap.tplinkcloud.com",
 )
+CLOUD_V2_LOGIN_PATH = "/api/v2/account/login"
+CLOUD_V2_DEVICE_LIST_PATH = "/api/v2/common/getDeviceListByPage"
+# App-level signing values published with the Tapo Android client. They
+# identify the application, not an account.
+TAPO_V2_ACCESS_KEY = "4d11b6b9d5ea4d19a829adbb9714b057"
+TAPO_V2_SIGNING = "6ed7d97f3e73467f8a5bab90b577ba4c"
+DEFAULT_CONTROL_REGION = "use1"
 DEVICE_TYPE = "SMART.TAPOLOCK"
 SUPPORTED_MODELS = {"DLW10"}
 
@@ -37,12 +48,23 @@ CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 15.0
 HANDSHAKE0_RETRIES = 2
 HANDSHAKE0_RETRY_DELAY = 2.0
+WAKE_TIMEOUT = 3.0
 VERIFY_POLLS = 5
 VERIFY_DELAY = 2.0
 SESSION_COOKIE_NAME = "TP_SESSIONID"
 DISCOVERY_PORTS = (20004, 20002)
-DISCOVERY_RETRIES = 3
-DISCOVERY_TIMEOUT = 1.5
+DISCOVERY_ATTEMPTS = 2
+DISCOVERY_WAIT = 7.5
+DISCOVERY_FAILED = "The configured IP did not answer Tapo discovery"
+# python-kasa's fixed 16-byte TDP probe for UDP 20002.
+SHORT_DISCOVERY_PROBE = bytes.fromhex("020000010000000000000000463cb5d3")
+MFA_MESSAGE = "Tapo cloud requires a verification code before this terminal can sign in"
+_AUTH_CODES = {"-20601", "-20615"}
+_MFA_CODES = {"-20675", "-20677"}
+_REGION_FROM_HOST = re.compile(
+    r"^(?:n-)?([a-z0-9]+)-(?:wap|account-api|app-server)(?:[.-]|$)"
+)
+_REGION_TOKEN = re.compile(r"[a-z0-9]{2,8}")
 
 
 class DlklapError(Exception):
@@ -53,8 +75,16 @@ class DlklapAuthenticationError(DlklapError):
     """Cloud credentials or a derived session credential were rejected."""
 
 
+class DlklapMfaRequiredError(DlklapAuthenticationError):
+    """The account requires a verification code that cannot be completed here."""
+
+
 class DlklapConnectionError(DlklapError):
     """The local lock or TP-Link service could not be reached."""
+
+
+class DlklapDiscoveryError(DlklapConnectionError):
+    """The lock did not answer discovery. Credentials were not rejected."""
 
 
 class DlklapDeviceSelectionError(DlklapError):
@@ -173,6 +203,9 @@ class DLW10Client:
 
         self._token: str | None = None
         self._account_id: str | None = None
+        self._app_server_url: str | None = None
+        self._control_region = DEFAULT_CONTROL_REGION
+        self._cloud_login_version: str | None = None
         self._cloud_device_id: str | None = None
         self._identity: str | None = None
         self._local_mac: str | None = None
@@ -261,6 +294,9 @@ class DLW10Client:
             self._lock_client = None
             self._token = None
             self._account_id = None
+            self._app_server_url = None
+            self._control_region = DEFAULT_CONTROL_REGION
+            self._cloud_login_version = None
             self._password = ""
             if client is not None:
                 await client.aclose()
@@ -314,56 +350,205 @@ class DLW10Client:
             return
         if not self._username or not self._password:
             raise DlklapAuthenticationError("Tapo cloud credentials are required")
+
+        failures: list[DlklapError] = []
+        if self._cloud_login_version != "v2":
+            try:
+                if await self._login_legacy():
+                    self._cloud_login_version = "v1"
+                    return
+            except DlklapError as error:
+                failures.append(error)
         try:
-            async with httpx.AsyncClient(timeout=READ_TIMEOUT) as client:
-                response = await client.post(
-                    CLOUD_LOGIN_URL,
-                    json={
-                        "method": "login",
-                        "params": {
-                            "appType": "Tapo_Android",
-                            "cloudUserName": self._username,
-                            "cloudPassword": self._password,
-                            "terminalUUID": self._app_uuid,
-                            "refreshTokenNeeded": False,
-                        },
-                    },
+            if await self._login_v2():
+                self._cloud_login_version = "v2"
+                return
+        except DlklapError as error:
+            failures.append(error)
+        self._raise_login_failure(failures)
+
+    async def _login_legacy(self) -> bool:
+        """Return True when the original cloud login accepts the account."""
+        body = await self._post_login(
+            CLOUD_LOGIN_URL,
+            {
+                "method": "login",
+                "params": {
+                    "appType": "Tapo_Android",
+                    "cloudUserName": self._username,
+                    "cloudPassword": self._password,
+                    "terminalUUID": self._app_uuid,
+                    "refreshTokenNeeded": False,
+                },
+            },
+        )
+        self._raise_for_login_code(body)
+        if self._store_login(_login_payload(body), base_url=CLOUD_LOGIN_URL):
+            return True
+        raise DlklapConnectionError("Tapo cloud login returned an unexpected response")
+
+    async def _login_v2(self) -> bool:
+        """Sign in through the regional v2 gateway when legacy login does not."""
+        bases: list[str] = []
+        if self._app_server_url:
+            bases.append(self._app_server_url)
+        bases.extend(CLOUD_V2_GATEWAYS)
+        visited: set[str] = set()
+        last_error: DlklapError | None = None
+        for base in bases:
+            origin = _https_origin(base)
+            if origin is None or origin in visited:
+                continue
+            visited.add(origin)
+            try:
+                body = await self._post_signed_login(origin)
+            except DlklapConnectionError as error:
+                last_error = error
+                continue
+            redirected = self._redirect_target(body)
+            if redirected and redirected not in visited:
+                visited.add(redirected)
+                try:
+                    body = await self._post_signed_login(redirected)
+                    origin = redirected
+                except DlklapConnectionError as error:
+                    last_error = error
+                    continue
+            elif _error_code(body) == "-20212":
+                last_error = DlklapConnectionError(
+                    "Tapo cloud login is temporarily unavailable"
                 )
-                if response.status_code in (401, 403):
-                    raise DlklapAuthenticationError(
-                        "Tapo cloud rejected the account login"
-                    )
-                response.raise_for_status()
-                body = response.json()
+                continue
+            try:
+                self._raise_for_login_code(body)
+            except DlklapAuthenticationError:
+                raise
+            except DlklapConnectionError as error:
+                last_error = error
+                continue
+            if self._store_login(_login_payload(body), base_url=origin):
+                return True
+            last_error = DlklapConnectionError(
+                "Tapo cloud login returned an unexpected response"
+            )
+        if last_error is not None:
+            raise last_error
+        raise DlklapConnectionError("Tapo cloud login request failed")
+
+    async def _post_login(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(timeout=READ_TIMEOUT, verify=True) as client:
+                response = await client.post(url, json=payload)
+        except httpx.HTTPError:
+            raise DlklapConnectionError("Tapo cloud login request failed") from None
+        return self._login_body(response)
+
+    async def _post_signed_login(self, origin: str) -> dict[str, Any]:
+        content = json.dumps(
+            {
+                "appType": "TP-Link_Tapo_Android",
+                "appVersion": "2.12.705",
+                "cloudPassword": self._password,
+                "cloudUserName": self._username,
+                "platform": "Android 12",
+                "refreshTokenNeeded": False,
+                "terminalMeta": "1",
+                "terminalName": "Home Assistant",
+                "terminalUUID": self._app_uuid,
+            },
+            separators=(",", ":"),
+        )
+        try:
+            async with httpx.AsyncClient(timeout=READ_TIMEOUT, verify=True) as client:
+                response = await client.post(
+                    origin + CLOUD_V2_LOGIN_PATH,
+                    content=content.encode(),
+                    headers=_v2_headers(content, CLOUD_V2_LOGIN_PATH),
+                )
+        except httpx.HTTPError:
+            raise DlklapConnectionError("Tapo cloud login request failed") from None
+        return self._login_body(response)
+
+    @staticmethod
+    def _login_body(response: httpx.Response) -> dict[str, Any]:
+        if response.status_code in (401, 403):
+            raise DlklapAuthenticationError("Tapo cloud rejected the account login")
+        try:
+            response.raise_for_status()
+            body = response.json()
         except (httpx.HTTPError, ValueError):
             raise DlklapConnectionError("Tapo cloud login request failed") from None
         if not isinstance(body, dict):
             raise DlklapConnectionError("Tapo cloud returned an invalid response")
-        code = str(body.get("error_code", body.get("errorCode", "")))
-        if code in ("-20601", "-20675", "-20677"):
+        return body
+
+    @staticmethod
+    def _redirect_target(body: dict[str, Any]) -> str | None:
+        payload = _login_payload(body)
+        if _has_login_token(payload):
+            return None
+        if _error_code(body) != "-20212":
+            return None
+        return _app_server_from(payload, body)
+
+    def _raise_for_login_code(self, body: dict[str, Any]) -> None:
+        payload = _login_payload(body)
+        if _has_login_token(payload):
+            return
+        code = _error_code(body)
+        if _is_mfa(code, payload):
+            raise DlklapMfaRequiredError(MFA_MESSAGE)
+        if code in _AUTH_CODES:
             raise DlklapAuthenticationError("Tapo cloud rejected the account login")
-        if code != "0":
+        if code not in ("", "0"):
             raise DlklapConnectionError("Tapo cloud login is temporarily unavailable")
-        try:
-            token = body["result"]["token"]
-            account_id = body["result"]["accountId"]
-            if not all(
-                isinstance(value, str) and value for value in (token, account_id)
+
+    def _store_login(self, payload: dict[str, Any], *, base_url: str) -> bool:
+        token = payload.get("token")
+        account_id = payload.get("accountId")
+        if not all(isinstance(value, str) and value for value in (token, account_id)):
+            return False
+        self._token = token
+        self._account_id = account_id
+        self._remember_cloud_region(payload, base_url)
+        return True
+
+    def _remember_cloud_region(self, payload: dict[str, Any], base_url: str) -> None:
+        """Keep the regional app server for device list and later token renewal."""
+        app_server = _app_server_from(payload)
+        if app_server is None:
+            origin = _https_origin(base_url)
+            if (
+                origin
+                and origin not in CLOUD_V2_GATEWAYS
+                and origin != _https_origin(CLOUD_LOGIN_URL)
             ):
-                raise TypeError
-            self._token = token
-            self._account_id = account_id
-        except (KeyError, TypeError):
-            raise DlklapConnectionError(
-                "Tapo cloud login returned an unexpected response"
-            ) from None
+                app_server = origin
+        if app_server is not None:
+            self._app_server_url = app_server
+        region = _region_from_payload(payload) or _region_from_host(app_server)
+        if region is not None:
+            self._control_region = region
+
+    @staticmethod
+    def _raise_login_failure(failures: list[DlklapError]) -> None:
+        if not failures:
+            raise DlklapConnectionError("Tapo cloud login request failed")
+        latest = failures[-1]
+        if isinstance(latest, DlklapAuthenticationError):
+            raise latest
+        for error in reversed(failures):
+            if isinstance(error, DlklapMfaRequiredError):
+                raise error
+        for error in reversed(failures):
+            if isinstance(error, DlklapAuthenticationError):
+                raise error
+        raise latest
 
     async def _ensure_cloud_device_id(self) -> None:
         if self._cloud_device_id:
             return
-        body = await self._cloud_request(
-            CLOUD_LOGIN_URL, {"method": "getDeviceList"}, control_key=False
-        )
+        body = await self._fetch_device_list()
 
         result = body.get("result")
         if not isinstance(result, dict):
@@ -415,45 +600,104 @@ class DLW10Client:
         self._cloud_device_id = device_id
         self._identity = hashlib.sha256(device_id.encode()).hexdigest()[:20]
 
+    async def _fetch_device_list(self) -> dict[str, Any]:
+        """List locks on the regional app server, or the legacy cloud host."""
+        if self._app_server_url:
+            try:
+                return await self._cloud_request(
+                    f"{self._app_server_url}{CLOUD_V2_DEVICE_LIST_PATH}",
+                    {
+                        "deviceTypeList": [DEVICE_TYPE],
+                        "index": 0,
+                        "limit": 50,
+                    },
+                    control_key=False,
+                    signed_path=CLOUD_V2_DEVICE_LIST_PATH,
+                )
+            except DlklapConnectionError:
+                return await self._cloud_request(
+                    f"{self._app_server_url}/",
+                    {"method": "getDeviceList"},
+                    control_key=False,
+                )
+        return await self._cloud_request(
+            CLOUD_LOGIN_URL, {"method": "getDeviceList"}, control_key=False
+        )
+
+    async def _wake_lock_radio(self) -> None:
+        """Open a short TCP connection so a sleeping lock brings its radio up.
+
+        The first SYN is often dropped while the radio wakes. The same retry
+        count used by handshake0 covers that without failing setup here.
+        """
+        for attempt in range(HANDSHAKE0_RETRIES):
+            writer: asyncio.StreamWriter | None = None
+            try:
+                _reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.host, 80),
+                    WAKE_TIMEOUT,
+                )
+                return
+            except asyncio.CancelledError:
+                raise
+            except (TimeoutError, OSError):
+                if attempt + 1 < HANDSHAKE0_RETRIES:
+                    await asyncio.sleep(HANDSHAKE0_RETRY_DELAY)
+            finally:
+                if writer is not None:
+                    writer.close()
+                    try:
+                        await writer.wait_closed()
+                    except OSError:
+                        pass
+
     async def _ensure_local_discovery(self) -> None:
         """Verify DLW10 discovery and retain only its normalized MAC in memory."""
         if self._local_mac is not None:
             return
+        await self._wake_lock_radio()
         query = await asyncio.to_thread(_build_discovery_query)
         loop = asyncio.get_running_loop()
         response_future: asyncio.Future[bytes] = loop.create_future()
-        transport, _protocol = await loop.create_datagram_endpoint(
-            lambda: _DiscoveryProtocol(self.host, response_future),
-            local_addr=("0.0.0.0", 0),  # noqa: S104 - ephemeral UDP listener.
-            family=socket.AF_INET,
-        )
         try:
-            for _ in range(DISCOVERY_RETRIES):
-                for port in DISCOVERY_PORTS:
-                    transport.sendto(query, (self.host, port))
+            transport, _protocol = await loop.create_datagram_endpoint(
+                lambda: _DiscoveryProtocol(self.host, response_future),
+                local_addr=("0.0.0.0", 0),  # noqa: S104 - ephemeral UDP listener.
+                family=socket.AF_INET,
+            )
+        except OSError:
+            raise DlklapDiscoveryError(DISCOVERY_FAILED) from None
+        try:
+            probes = (
+                (query, 20004),
+                (query, 20002),
+                (SHORT_DISCOVERY_PROBE, 20002),
+            )
+            for _ in range(DISCOVERY_ATTEMPTS):
+                for packet, port in probes:
+                    transport.sendto(packet, (self.host, port))
                 try:
                     response = await asyncio.wait_for(
-                        asyncio.shield(response_future), DISCOVERY_TIMEOUT
+                        asyncio.shield(response_future), DISCOVERY_WAIT
                     )
                     break
                 except TimeoutError:
                     continue
             else:
-                raise DlklapConnectionError(
-                    "The configured IP did not answer Tapo discovery"
-                )
+                raise DlklapDiscoveryError(DISCOVERY_FAILED)
         finally:
             transport.close()
 
+        result = _discovery_result(response)
+        if result is None:
+            raise DlklapDeviceMismatchError(
+                "The configured IP returned an invalid discovery response"
+            )
         try:
-            body = json.loads(response[16:])
-            result = body["result"]
-            if not isinstance(result, dict):
-                raise TypeError
             scheme = result["mgt_encrypt_schm"]
             if not isinstance(scheme, dict):
                 raise TypeError
-        except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+        except (KeyError, TypeError):
             raise DlklapDeviceMismatchError(
                 "The configured IP returned an invalid discovery response"
             ) from None
@@ -504,7 +748,7 @@ class DLW10Client:
         if self._cloud_device_id is None:
             raise DlklapConnectionError("Cloud lock selection is incomplete")
         body = await self._cloud_request(
-            CONTROL_KEY_URL.format(device_id=self._cloud_device_id),
+            self._control_key_url(),
             {"secret": secret, "random": random4.hex().upper()},
             control_key=True,
         )
@@ -520,8 +764,26 @@ class DLW10Client:
             raise DlklapConnectionError("The cloud did not return a valid control key")
         return control_key
 
+    def _control_key_url(self) -> str:
+        if self._cloud_device_id is None:
+            raise DlklapConnectionError("Cloud lock selection is incomplete")
+        region = (
+            self._control_region
+            if _REGION_TOKEN.fullmatch(self._control_region)
+            else DEFAULT_CONTROL_REGION
+        )
+        return (
+            f"https://{region}-app-server.iot.i.tplinknbu.com"
+            f"/v1/things/{self._cloud_device_id}/control-key"
+        )
+
     async def _cloud_request(
-        self, url: str, payload: dict[str, Any], *, control_key: bool
+        self,
+        url: str,
+        payload: dict[str, Any],
+        *,
+        control_key: bool,
+        signed_path: str | None = None,
     ) -> dict[str, Any]:
         """Renew a rejected cloud token once, without retrying transport failures.
 
@@ -534,6 +796,8 @@ class DLW10Client:
             await self._ensure_cloud_login()
             headers = {}
             params = {}
+            content: bytes | None = None
+            json_body: dict[str, Any] | None = payload
             if control_key:
                 headers = {
                     "Authorization": f"ut|{self._token}",
@@ -548,6 +812,11 @@ class DLW10Client:
                 }
             else:
                 params = {"token": self._token}
+                if signed_path:
+                    encoded = json.dumps(payload, separators=(",", ":"))
+                    content = encoded.encode()
+                    json_body = None
+                    headers = _v2_headers(encoded, signed_path)
             try:
                 # Preserve the existing private-CA exception for control keys only.
                 # Password-bearing login and device-list requests verify TLS.
@@ -555,7 +824,11 @@ class DLW10Client:
                     timeout=READ_TIMEOUT, verify=not control_key
                 ) as client:
                     response = await client.post(
-                        url, json=payload, headers=headers, params=params
+                        url,
+                        json=json_body,
+                        content=content,
+                        headers=headers,
+                        params=params,
                     )
                     rejected = response.status_code in (401, 403)
                     if not rejected:
@@ -833,9 +1106,140 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         self._response_future = response_future
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        # A sleeping lock may answer from an ephemeral source port. Keep only
+        # datagrams that belong to the configured host and look like discovery.
         if (
             addr[0] == self._host
-            and addr[1] in DISCOVERY_PORTS
+            and data
             and not self._response_future.done()
+            and _discovery_result(data) is not None
         ):
             self._response_future.set_result(data)
+
+
+def _v2_headers(content: str, path: str) -> dict[str, str]:
+    """HMAC-SHA1 headers used by the Tapo Android cloud client."""
+    digest = base64.b64encode(
+        hashlib.md5(content.encode(), usedforsecurity=False).digest()
+    ).decode()
+    timestamp = str(int(time.time()))
+    nonce = str(uuid.uuid4())
+    signed = f"{digest}\n{timestamp}\n{nonce}\n{path}".encode()
+    signature = hmac.new(TAPO_V2_SIGNING.encode(), signed, hashlib.sha1).hexdigest()
+    return {
+        "Content-Type": "application/json; charset=UTF-8",
+        "Content-MD5": digest,
+        "X-Authorization": (
+            f"Timestamp={timestamp}, Nonce={nonce}, "
+            f"AccessKey={TAPO_V2_ACCESS_KEY}, Signature={signature}"
+        ),
+    }
+
+
+def _login_payload(body: dict[str, Any]) -> dict[str, Any]:
+    result = body.get("result")
+    if isinstance(result, dict):
+        return result
+    return body
+
+
+def _has_login_token(payload: dict[str, Any]) -> bool:
+    token = payload.get("token")
+    account_id = payload.get("accountId")
+    return all(isinstance(value, str) and value for value in (token, account_id))
+
+
+def _error_code(body: dict[str, Any]) -> str:
+    codes: list[str] = []
+    containers: list[dict[str, Any]] = [body]
+    result = body.get("result")
+    if isinstance(result, dict):
+        containers.append(result)
+    for container in containers:
+        if "error_code" in container or "errorCode" in container:
+            codes.append(str(container.get("error_code", container.get("errorCode"))))
+    for code in codes:
+        if code not in ("0", ""):
+            return code
+    return codes[0] if codes else ""
+
+
+def _is_mfa(code: str, payload: dict[str, Any]) -> bool:
+    if _has_login_token(payload):
+        return False
+    if code in _MFA_CODES:
+        return True
+    return "MFAProcessId" in payload
+
+
+def _https_origin(value: Any) -> str | None:
+    """Return a TP-Link HTTPS origin, rejecting any other login target."""
+    if not isinstance(value, str):
+        return None
+    parsed = urlsplit(value.strip())
+    host = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme != "https"
+        or not host
+        or parsed.username
+        or parsed.password
+        or (parsed.port not in (None, 443))
+    ):
+        return None
+    if not (host.endswith(".tplinkcloud.com") or host.endswith(".tplinknbu.com")):
+        return None
+    return f"https://{host}"
+
+
+def _app_server_from(*containers: dict[str, Any]) -> str | None:
+    wap: str | None = None
+    other: str | None = None
+    for container in containers:
+        for key in ("appServerUrl", "appServerUrlV2"):
+            origin = _https_origin(container.get(key))
+            if origin is None:
+                continue
+            host = urlsplit(origin).hostname or ""
+            if "wap" in host and wap is None:
+                wap = origin
+            elif other is None:
+                other = origin
+    return wap or other
+
+
+def _region_from_host(url: str | None) -> str | None:
+    if not url:
+        return None
+    host = urlsplit(url).hostname or ""
+    match = _REGION_FROM_HOST.match(host)
+    if match and _REGION_TOKEN.fullmatch(match.group(1)):
+        return match.group(1)
+    return None
+
+
+def _region_from_payload(payload: dict[str, Any]) -> str | None:
+    for key in ("appServerUrl", "appServerUrlV2", "accountApiUrl"):
+        region = _region_from_host(_https_origin(payload.get(key)))
+        if region:
+            return region
+    for key in ("region", "serviceRegion"):
+        value = payload.get(key)
+        if isinstance(value, str) and _REGION_TOKEN.fullmatch(value.lower()):
+            return value.lower()
+    return None
+
+
+def _discovery_result(data: bytes) -> dict[str, Any] | None:
+    """Return the discovery result object from a raw or TDP-framed datagram."""
+    candidates = [data]
+    if len(data) > 16:
+        candidates.insert(0, data[16:])
+    for payload in candidates:
+        try:
+            body = json.loads(payload)
+        except (ValueError, UnicodeDecodeError):
+            continue
+        result = body.get("result") if isinstance(body, dict) else None
+        if isinstance(result, dict):
+            return result
+    return None
